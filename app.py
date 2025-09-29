@@ -47,6 +47,18 @@ def safe(d, k, default=None):
     except Exception:
         return default
 
+def human_format(num):
+    """Format large numbers with K/M/B/T suffixes and commas, suffixed by USD."""
+    if pd.isna(num):
+        return ""
+    units = ["", "K", "M", "B", "T"]
+    for unit in units:
+        if abs(num) < 1000:
+            return f"{num:,.0f} {unit} USD".strip()
+        num /= 1000.0
+    # Very large fallback
+    return f"{num:.1f}P USD"
+
 @st.cache_data(show_spinner=False, ttl=60*30)  # cache for 30 minutes
 def get_fx_rates(codes):
     rates = {"USD": 1.0}
@@ -170,13 +182,18 @@ if refresh:
 
 df, notes = fetch_data()
 
+# Apply human-readable formatting for display only
+df_display = df.copy()
+df_display["Market Cap (USD)"] = df_display["Market Cap (USD)"].apply(human_format)
+df_display["Revenue TTM (USD)"] = df_display["Revenue TTM (USD)"].apply(human_format)
+
 st.dataframe(
-    df,
+    df_display,
     use_container_width=True,
     hide_index=True
 )
 
-# Download buttons
+# Download buttons (CSV/Excel use the raw numeric values for analysis)
 csv_bytes = df.to_csv(index=False).encode("utf-8")
 xlsx_buf = BytesIO()
 try:
