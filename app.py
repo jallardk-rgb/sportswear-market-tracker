@@ -77,20 +77,31 @@ def revenue_ttm(tkr: yf.Ticker):
         return None
 
 def daily_pct_change(tkr: yf.Ticker):
+    """Compute 1-day % change with robust checks and outlier filtering."""
     try:
+        # Primary: last two closes
         hist = tkr.history(period="2d")
         closes = hist["Close"].dropna()
-        if len(closes) >= 2 and closes.iloc[-2] != 0:
-            return float((closes.iloc[-1] - closes.iloc[-2]) / closes.iloc[-2] * 100.0)
-        # fallback using previousClose/currentPrice
-        info = tkr.info
-        prev = safe(info, "previousClose")
-        last = safe(info, "currentPrice")
-        if prev and last and prev != 0:
-            return float((last - prev) / prev * 100.0)
+        if len(closes) >= 2:
+            prev, last = float(closes.iloc[-2]), float(closes.iloc[-1])
+            if prev and prev > 0:
+                change = (last - prev) / prev * 100.0
+                # Filter obvious data glitches (corporate actions, missing prev close, bad ticks)
+                if abs(change) > 50:
+                    return None
+                return float(change)
+        # Fallback: info.previousClose/currentPrice
+        info = tkr.info or {}
+        prev = info.get("previousClose")
+        last = info.get("currentPrice")
+        if prev and last and prev > 0:
+            change = (float(last) - float(prev)) / float(prev) * 100.0
+            if abs(change) > 50:
+                return None
+            return float(change)
     except Exception:
         return None
-
+    return None
 @st.cache_data(show_spinner=True, ttl=60*30)  # cache for 30 minutes
 def fetch_data():
     # Prefetch currencies for FX conversions
