@@ -47,18 +47,6 @@ def safe(d, k, default=None):
     except Exception:
         return default
 
-def human_format(num):
-    """Format large numbers with K/M/B/T suffixes and commas, suffixed by USD."""
-    if pd.isna(num):
-        return ""
-    units = ["", "K", "M", "B", "T"]
-    for unit in units:
-        if abs(num) < 1000:
-            return f"{num:,.0f} {unit} USD".strip()
-        num /= 1000.0
-    # Very large fallback
-    return f"{num:.1f}P USD"
-
 @st.cache_data(show_spinner=False, ttl=60*30)  # cache for 30 minutes
 def get_fx_rates(codes):
     rates = {"USD": 1.0}
@@ -182,15 +170,53 @@ if refresh:
 
 df, notes = fetch_data()
 
-# Apply human-readable formatting for display only
+# Create display-friendly numeric columns in billions (keeps sorting numeric)
 df_display = df.copy()
-df_display["Market Cap (USD)"] = df_display["Market Cap (USD)"].apply(human_format)
-df_display["Revenue TTM (USD)"] = df_display["Revenue TTM (USD)"].apply(human_format)
+df_display["Market Cap (USD, B)"] = df_display["Market Cap (USD)"] / 1e9
+df_display["Revenue TTM (USD, B)"] = df_display["Revenue TTM (USD)"] / 1e9
+
+# Choose column order for display (keep raw USD for downloads and backend)
+display_cols = [
+    "Company",
+    "Ticker",
+    "Native Currency",
+    "Last Price (native)",
+    "Market Cap (USD, B)",
+    "Revenue TTM (USD, B)",
+    "P/E (TTM)",
+    "Daily % Change",
+    "Updated (UTC)",
+]
 
 st.dataframe(
-    df_display,
+    df_display[display_cols],
     use_container_width=True,
-    hide_index=True
+    hide_index=True,
+    column_order=display_cols,
+    column_config={
+        "Market Cap (USD, B)": st.column_config.NumberColumn(
+            "Market Cap (USD, B)",
+            help="Billions of USD",
+            format="%,.2f B USD"
+        ),
+        "Revenue TTM (USD, B)": st.column_config.NumberColumn(
+            "Revenue TTM (USD, B)",
+            help="Billions of USD",
+            format="%,.2f B USD"
+        ),
+        "Last Price (native)": st.column_config.NumberColumn(
+            "Last Price (native)",
+            format="%,.2f"
+        ),
+        "P/E (TTM)": st.column_config.NumberColumn(
+            "P/E (TTM)",
+            format="%,.2f"
+        ),
+        "Daily % Change": st.column_config.NumberColumn(
+            "Daily % Change",
+            format="%,.2f%%"
+        ),
+    }
 )
 
 # Download buttons (CSV/Excel use the raw numeric values for analysis)
@@ -202,11 +228,11 @@ try:
 except Exception:
     xlsx_buf = None
 
-st.download_button("Download CSV", data=csv_bytes, file_name="sportswear_market_tracker.csv", mime="text/csv")
+st.download_button("Download CSV (raw USD)", data=csv_bytes, file_name="sportswear_market_tracker.csv", mime="text/csv")
 if xlsx_buf is not None:
-    st.download_button("Download Excel", data=xlsx_buf, file_name="sportswear_market_tracker.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+    st.download_button("Download Excel (raw USD)", data=xlsx_buf, file_name="sportswear_market_tracker.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
 if notes:
     st.info("\\n".join(f"- {n}" for n in notes))
 
-st.caption("Note: All monetary values are converted to USD using latest FX close prices from Yahoo Finance. 'Native Currency' shows the company listing currency for reference.")
+st.caption("All monetary values are converted to USD. Table displays billions (B USD) for readability while preserving numeric sorting. Downloads contain raw USD values.")
